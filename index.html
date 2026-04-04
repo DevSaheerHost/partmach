@@ -325,6 +325,50 @@ header{padding:16px 16px 0;max-width:720px;margin:0 auto;display:flex;align-item
   margin: 0 2px; vertical-align: middle;
 }
 
+
+/* ── Role Badges ── */
+.role-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px;
+  border-radius: 3px; font-family: var(--mono); font-size: 9px;
+  letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-left: 6px;
+}
+.role-superadmin { background: rgba(240,192,64,.2); color: var(--accent); border: 1px solid rgba(240,192,64,.4); }
+.role-admin      { background: rgba(64,192,240,.15); color: var(--accent2); border: 1px solid rgba(64,192,240,.3); }
+.role-user       { background: rgba(136,136,136,.1); color: var(--muted); border: 1px solid var(--border); }
+
+/* ── Access Denied Flash ── */
+#access-denied {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 800;
+  background: var(--danger); color: #fff;
+  padding: 10px 16px; text-align: center;
+  font-family: var(--mono); font-size: 12px; letter-spacing: .08em;
+  transform: translateY(-100%); transition: transform .28s ease;
+}
+#access-denied.show { transform: translateY(0); }
+
+/* ── Admin-only visibility ── */
+.admin-only   { display: none !important; }
+.admin-only.visible { display: flex !important; }
+.admin-tab-btn { display: none; }
+.admin-tab-btn.visible { display: block; }
+
+/* ── Access Control Section ── */
+.admin-list-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+}
+.admin-list-item:last-child { border-bottom: none; }
+.admin-list-left { display: flex; align-items: center; gap: 10px; }
+.admin-av {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--accent);
+}
+.admin-list-name { font-size: 13px; font-weight: 600; }
+.admin-list-email { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.admin-list-since { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
 </style>
 </head>
 <body>
@@ -393,7 +437,7 @@ header{padding:16px 16px 0;max-width:720px;margin:0 auto;display:flex;align-item
     <div class="logo">Part<span>Match</span></div>
     <nav class="nav-tabs">
       <button class="nav-tab active" onclick="showPage('search')">Search</button>
-      <button class="nav-tab"        onclick="showPage('admin')">Admin</button>
+      <button class="nav-tab admin-tab-btn" id="nav-admin-btn" onclick="showPage('admin')">Admin</button>
       <button class="nav-tab"        onclick="showPage('profile')">Profile</button>
     </nav>
     <div class="user-avatar" id="hdr-av" onclick="showPage('profile')" title="Profile">?</div>
@@ -436,6 +480,7 @@ header{padding:16px 16px 0;max-width:720px;margin:0 auto;display:flex;align-item
       <div class="admin-subtabs">
         <button class="admin-subtab active" onclick="switchAdminTab('parts')">Parts</button>
         <button class="admin-subtab"        onclick="switchAdminTab('activity')">Activity Log</button>
+        <button class="admin-subtab" id="admins-tab" style="display:none" onclick="switchAdminTab('admins')">🛡 Admins</button>
       </div>
 
       <div id="admin-parts" class="admin-subpage active">
@@ -517,6 +562,62 @@ header{padding:16px 16px 0;max-width:720px;margin:0 auto;display:flex;align-item
         </div>
       </div>
     </div>
+      <div id="admin-admins" class="admin-subpage">
+        <div class="admin-section" style="padding-top:6px">
+          <div class="section-header">
+            <span class="section-title">Add Admin</span>
+          </div>
+          <div class="form-card">
+            <div class="form-row">
+              <label>User Email</label>
+              <input class="form-input" id="new-admin-email" placeholder="user@example.com" type="email">
+            </div>
+            <div class="form-row">
+              <label>Role</label>
+              <select class="form-select" id="new-admin-role">
+                <option value="admin">Admin (can add/edit/delete parts)</option>
+                <option value="superadmin">Super Admin (can also manage admins)</option>
+              </select>
+            </div>
+            <button class="btn btn-primary btn-full" onclick="addAdmin()">Grant Access</button>
+          </div>
+        </div>
+        <div class="admin-section">
+          <div class="section-header">
+            <span class="section-title">Current Admins</span>
+            <button class="btn btn-sm btn-secondary" onclick="loadAdminList()">↺ Refresh</button>
+          </div>
+          <div class="table-wrap" id="admin-list-wrap">
+            <div style="text-align:center;color:var(--muted);padding:24px;font-family:var(--mono);font-size:12px">Loading…</div>
+          </div>
+        </div>
+        <div class="admin-section">
+          <div class="section-header"><span class="section-title">Firebase Security Rules</span></div>
+          <div class="form-card">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.8">
+              Copy these rules into Firebase Console → Realtime Database → Rules.<br>
+              They enforce admin-only writes server-side.
+            </div>
+            <pre style="background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);padding:12px;font-family:var(--mono);font-size:11px;color:var(--accent);overflow-x:auto;white-space:pre">{
+  "rules": {
+    "partmatch": {
+      "parts":  { ".read": true,
+                  ".write": "auth != null &amp;&amp; root.child('partmatch/admins').child(auth.uid).exists()" },
+      "models": { ".read": true,
+                  ".write": "auth != null &amp;&amp; root.child('partmatch/admins').child(auth.uid).exists()" },
+      "audit":  { ".read": "auth != null &amp;&amp; root.child('partmatch/admins').child(auth.uid).exists()",
+                  ".write": "auth != null" },
+      "users":  { ".read": "auth != null",
+                  ".write": "auth != null &amp;&amp; (auth.uid === $uid || root.child('partmatch/admins').child(auth.uid).exists())" },
+      "admins": { ".read": "auth != null",
+                  ".write": "auth != null &amp;&amp; root.child('partmatch/admins').child(auth.uid).child('role').val() === 'superadmin'" }
+    }
+  }
+}</pre>
+          </div>
+        </div>
+      </div><!-- /admin-admins -->
+
   </div><!-- /page-admin -->
 
   <!-- ═══ PROFILE PAGE ═══ -->
@@ -524,7 +625,7 @@ header{padding:16px 16px 0;max-width:720px;margin:0 auto;display:flex;align-item
     <div class="profile-header">
       <div class="profile-av" id="pr-av">?</div>
       <div class="profile-info">
-        <h2 id="pr-name">—</h2>
+        <h2 id="pr-name">—<span id="pr-role-badge"></span></h2>
         <div class="p-email" id="pr-email">—</div>
         <div class="p-since" id="pr-joined">—</div>
         <div class="p-since" id="pr-seen" style="margin-top:1px">—</div>
@@ -573,6 +674,7 @@ const CFG = {
   PATH:     'partmatch',
   AKEY:     'AIzaSyBV3CNqsmKPqJUu0ujkx5yBRMOvR-vzKoU',
   ABASE:    'https://identitytoolkit.googleapis.com/v1/accounts',
+  TBASE:    'https://securetoken.googleapis.com/v1/token',
   TTL:      5  * 60 * 1000,
   FTTL:     15 * 60 * 1000,
   CP:       'pm_',
@@ -602,13 +704,35 @@ const C = {
    FIREBASE REST
    ============================================================ */
 const FB = {
-  u(p){return`${CFG.DB}/${CFG.PATH}/${p}.json`},
-  async r(p,o={}){let r;try{r=await fetch(this.u(p),o)}catch(e){showFBErr('NETWORK');throw e}if(!r.ok){if(r.status===401||r.status===403)showFBErr('PERM');throw new Error('Firebase '+r.status)}return r.json().catch(()=>null)},
-  get(p){return DEMO?D.get(p):this.r(p)},
-  set(p,d){return DEMO?D.set(p,d):this.r(p,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})},
-  patch(p,d){return DEMO?D.patch(p,d):this.r(p,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})},
-  del(p){return DEMO?D.del(p):this.r(p,{method:'DELETE'})},
-  push(p,d){return DEMO?D.push(p,d):this.r(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)})}
+  uPub(p)  { return `${CFG.DB}/${CFG.PATH}/${p}.json`; },
+  uAuth(p) { const t=cu?.idToken?`?auth=${cu.idToken}`:''; return `${CFG.DB}/${CFG.PATH}/${p}.json${t}`; },
+
+  // Shared fetch core — silent=true suppresses error modal
+  async _fetch(url, o={}, silent=false) {
+    let r;
+    try { r = await fetch(url, o); }
+    catch(e) { if(!silent) showFBErr('NETWORK'); throw e; }
+    if(!r.ok) {
+      if(!silent && (r.status===401||r.status===403)) showFBErr('PERM');
+      throw new Error('Firebase '+r.status);
+    }
+    return r.json().catch(()=>null);
+  },
+
+  // Public reads (parts, models) — no token needed
+  get(p)      { return DEMO?D.get(p):this._fetch(this.uPub(p)); },
+
+  // Authenticated reads (admins, users, audit) — sends token, NEVER shows error modal
+  getAuth(p)  {
+    if (DEMO) return D.get(p);
+    return this._fetch(this.uAuth(p), {}, true).catch(()=>null);
+  },
+
+  // Writes — always authed, always show modal on failure
+  set(p,d)    { return DEMO?D.set(p,d):this._fetch(this.uAuth(p),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}); },
+  patch(p,d)  { return DEMO?D.patch(p,d):this._fetch(this.uAuth(p),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}); },
+  del(p)      { return DEMO?D.del(p):this._fetch(this.uAuth(p),{method:'DELETE'}); },
+  push(p,d)   { return DEMO?D.push(p,d):this._fetch(this.uAuth(p),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}); }
 };
 const D={
   _s(){try{return JSON.parse(localStorage.getItem('pm_ddb')||'{}')}catch{return{}}},
@@ -628,23 +752,232 @@ const Auth={
     const r=await fetch(`${CFG.ABASE}:signUp?key=${CFG.AKEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass,returnSecureToken:true})});
     const d=await r.json();if(d.error)throw new Error(this.fm(d.error.message));
     await FB.set(`users/${d.localId}`,{username:uname,email,createdAt:Date.now(),lastSeen:Date.now(),searches:[]});
-    const user={uid:d.localId,username:uname,email,idToken:d.idToken,createdAt:Date.now(),searches:[]};
+    const user={uid:d.localId,username:uname,email,idToken:d.idToken,refreshToken:d.refreshToken,createdAt:Date.now(),searches:[]};
     this.save(user);return user;
   },
   async signIn(email,pass){
     const r=await fetch(`${CFG.ABASE}:signInWithPassword?key=${CFG.AKEY}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pass,returnSecureToken:true})});
     const d=await r.json();if(d.error)throw new Error(this.fm(d.error.message));
-    const prof=await FB.get(`users/${d.localId}`).catch(()=>null);
+    // Fetch profile and admin status — admin check is silent (non-admins get 403, treat as 'user')
+    const [prof, adminNode] = await Promise.all([
+      FB.get(`users/${d.localId}`).catch(()=>null),
+      this._getAdminNode(d.localId, d.idToken)
+    ]);
     const uname=prof?.username||email.split('@')[0];
     const searches=prof?.searches||[];
-    await FB.patch(`users/${d.localId}`,{lastSeen:Date.now()}).catch(()=>{});
-    const user={uid:d.localId,username:uname,email,idToken:d.idToken,createdAt:prof?.createdAt||Date.now(),searches};
+    const role=adminNode?.role||'user';
+    FB.patch(`users/${d.localId}`,{lastSeen:Date.now()}).catch(()=>{});
+    const user={uid:d.localId,username:uname,email,idToken:d.idToken,refreshToken:d.refreshToken,createdAt:prof?.createdAt||Date.now(),searches,role};
     this.save(user);return user;
   },
+  // Silently fetch admin node using a fresh token — never triggers error modal
+  async _getAdminNode(uid, idToken) {
+    try {
+      const url = `${CFG.DB}/${CFG.PATH}/admins/${uid}.json?auth=${idToken}`;
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      return r.json().catch(()=>null);
+    } catch { return null; }
+  },
+
+  // Refresh the Firebase idToken using the stored refreshToken
+  async refreshIdToken() {
+    const saved = this.load();
+    if (!saved?.refreshToken) return false;
+    try {
+      const r = await fetch(`${CFG.TBASE}?key=${CFG.AKEY}`, {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ grant_type:'refresh_token', refresh_token:saved.refreshToken })
+      });
+      if (!r.ok) return false;
+      const d = await r.json();
+      if (!d.id_token) return false;
+      saved.idToken = d.id_token;
+      saved.refreshToken = d.refresh_token || saved.refreshToken;
+      this.save(saved);
+      cu = saved;
+      return true;
+    } catch { return false; }
+  },
+
   signOut(){localStorage.removeItem('pm_sess');cu=null;document.getElementById('app').style.display='none';document.getElementById('auth-screen').style.display='flex';switchAuthTab('login')},
   save(u){localStorage.setItem('pm_sess',JSON.stringify(u));cu=u},
   load(){try{return JSON.parse(localStorage.getItem('pm_sess'))}catch{return null}},
   fm(c){return({'EMAIL_EXISTS':'Email already registered.','EMAIL_NOT_FOUND':'No account with that email.','INVALID_PASSWORD':'Incorrect password.','INVALID_LOGIN_CREDENTIALS':'Incorrect email or password.','WEAK_PASSWORD':'Password must be 6+ characters.','INVALID_EMAIL':'Enter a valid email address.','TOO_MANY_ATTEMPTS_TRY_LATER':'Too many attempts. Try later.'}[c]||c)}
+};
+
+
+/* ============================================================
+   ACCESS CONTROL
+   ============================================================ */
+
+let _denyT;
+function denyAccess() {
+  const bar = document.getElementById('access-denied');
+  if (!bar) return;
+  bar.classList.add('show');
+  clearTimeout(_denyT);
+  _denyT = setTimeout(() => bar.classList.remove('show'), 3500);
+}
+
+/* ── Add admin by email ── */
+async function addAdmin() {
+  if (!Roles.isSuperAdmin()) { denyAccess(); return; }
+  const email = document.getElementById('new-admin-email').value.trim().toLowerCase();
+  const role  = document.getElementById('new-admin-role').value;
+  if (!email) { toast('Enter an email address', 'error'); return; }
+
+  try {
+    // Find user by email in users node
+    const allUsers = await FB.getAuth('users');
+    if (!allUsers) { toast('No users found in database', 'error'); return; }
+
+    const entry = Object.entries(allUsers).find(([,u]) => u.email?.toLowerCase() === email);
+    if (!entry) {
+      toast('User not found. They must sign up first.', 'error');
+      return;
+    }
+    const [uid, udata] = entry;
+
+    // Check if already admin
+    const existing = await FB.getAuth(`admins/${uid}`).catch(() => null);
+    if (existing) {
+      toast(`@${udata.username} is already an admin`, 'info');
+      return;
+    }
+
+    await FB.set(`admins/${uid}`, {
+      email: udata.email,
+      username: udata.username || email.split('@')[0],
+      role,
+      addedAt: Date.now(),
+      addedBy: cu.uid,
+      addedByUsername: cu.username
+    });
+
+    await Audit.log('admin_grant', uid, `${udata.username||email} → ${role}`);
+
+    document.getElementById('new-admin-email').value = '';
+    toast(`✓ @${udata.username||email} granted ${role} access`, 'success');
+    loadAdminList();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+    console.error(e);
+  }
+}
+
+/* ── Remove admin ── */
+async function removeAdmin(uid, username) {
+  if (!Roles.isSuperAdmin()) { denyAccess(); return; }
+  if (uid === cu.uid) { toast("You can't remove your own admin access", 'error'); return; }
+  if (!confirm(`Remove admin access for @${username}?`)) return;
+  try {
+    await FB.del(`admins/${uid}`);
+    await Audit.log('admin_revoke', uid, username);
+    toast(`Admin access revoked for @${username}`, 'info');
+    loadAdminList();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+/* ── Change admin role ── */
+async function changeAdminRole(uid, username, newRole) {
+  if (!Roles.isSuperAdmin()) { denyAccess(); return; }
+  if (uid === cu.uid) { toast("You can't change your own role", 'error'); return; }
+  try {
+    await FB.patch(`admins/${uid}`, { role: newRole });
+    await Audit.log('admin_role_change', uid, `${username} → ${newRole}`);
+    toast(`@${username} role changed to ${newRole}`, 'success');
+    loadAdminList();
+  } catch(e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+}
+
+/* ── Render admin list ── */
+async function loadAdminList() {
+  const wrap = document.getElementById('admin-list-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px;font-family:var(--mono);font-size:12px">Loading…</div>';
+  try {
+    const admins = await FB.getAuth('admins');
+    if (!admins || !Object.keys(admins).length) {
+      wrap.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px;font-family:var(--mono);font-size:12px">No admins configured yet.</div>';
+      return;
+    }
+    const isSA = Roles.isSuperAdmin();
+    wrap.innerHTML = Object.entries(admins).map(([uid, a]) => {
+      const isSelf = uid === cu.uid;
+      const roleOpts = isSA && !isSelf ? `
+        <select onchange="changeAdminRole('${uid}','${esc(a.username||'')}',this.value)"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-family:var(--mono);font-size:10px;color:var(--text);cursor:pointer;margin-right:6px">
+          <option value="admin"      ${a.role==='admin'      ?'selected':''}>admin</option>
+          <option value="superadmin" ${a.role==='superadmin' ?'selected':''}>superadmin</option>
+        </select>` : '';
+      const delBtn = isSA && !isSelf
+        ? `<button class="btn btn-sm btn-danger" onclick="removeAdmin('${uid}','${esc(a.username||'')}')">Revoke</button>` : '';
+      return `<div class="admin-list-item">
+        <div class="admin-list-left">
+          <div class="admin-av">${(a.username||'?')[0].toUpperCase()}</div>
+          <div>
+            <div class="admin-list-name">@${esc(a.username||'unknown')}${isSelf?' <span style="font-family:var(--mono);font-size:9px;color:var(--muted)">(you)</span>':''}</div>
+            <div class="admin-list-email">${esc(a.email||'')}</div>
+            <div class="admin-list-since">Added ${timeAgo(a.addedAt)}${a.addedByUsername?' by @'+esc(a.addedByUsername):''}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${Roles.badge(a.role)}
+          ${roleOpts}
+          ${delBtn}
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    wrap.innerHTML = `<div style="text-align:center;color:var(--danger);padding:24px;font-family:var(--mono);font-size:12px">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+/* ── Bootstrap: check if admins node is empty and offer to self-promote ── */
+async function checkBootstrap() {
+  if (!cu) return;
+  try {
+    const admins = await FB.getAuth('admins').catch(() => null);
+    if (!admins || !Object.keys(admins).length) {
+      // No admins exist — offer first user to become superadmin
+      if (confirm('No admins are configured yet.\n\nMake yourself the first Super Admin?\n\n(You can add more admins from the Admin panel later)')) {
+        await FB.set(`admins/${cu.uid}`, {
+          email: cu.email,
+          username: cu.username,
+          role: 'superadmin',
+          addedAt: Date.now(),
+          addedBy: null,
+          addedByUsername: null
+        });
+        cu.role = 'superadmin';
+        Auth.save(cu);
+        toast('You are now Super Admin ✓', 'success');
+        // Re-run launch UI updates
+        const navAdminBtn = document.getElementById('nav-admin-btn');
+        if (navAdminBtn) navAdminBtn.classList.add('visible');
+        const adminsTab = document.getElementById('admins-tab');
+        if (adminsTab) adminsTab.style.display = 'block';
+      }
+    }
+  } catch(e) { console.warn('Bootstrap check failed:', e); }
+}
+
+/* ============================================================
+   ROLE HELPERS
+   ============================================================ */
+const Roles = {
+  isAdmin()      { return cu?.role==='admin'||cu?.role==='superadmin'; },
+  isSuperAdmin() { return cu?.role==='superadmin'; },
+  badge(role) {
+    if(role==='superadmin') return '<span class="role-badge role-superadmin">superadmin</span>';
+    if(role==='admin')      return '<span class="role-badge role-admin">admin</span>';
+    return '<span class="role-badge role-user">user</span>';
+  }
 };
 
 /* ============================================================
@@ -669,7 +1002,7 @@ const Audit={
     if(!cu)return;
     FB.push('audit',{action,partId:pid,partName:pname,uid:cu.uid,username:cu.username,at:Date.now()}).catch(()=>{});
   },
-  async getAll(){const d=await FB.get('audit');if(!d)return[];return Object.values(d).sort((a,b)=>b.at-a.at)},
+  async getAll(){const d=await FB.getAuth('audit');if(!d)return[];return Object.values(d).sort((a,b)=>b.at-a.at)},
   async getMine(){if(!cu)return[];const all=await this.getAll();return all.filter(e=>e.uid===cu.uid)}
 };
 
@@ -684,6 +1017,7 @@ function timeAgo(ts){if(!ts)return'—';const d=Date.now()-ts;if(d<60000)return'
    CRUD
    ============================================================ */
 async function savePart(){
+  if(!Roles.isAdmin()){ denyAccess(); return; }
   const id=document.getElementById('eid').value;
   const name=document.getElementById('f-name').value.trim();
   const type=document.getElementById('f-type').value;
@@ -729,6 +1063,7 @@ async function savePart(){
 }
 
 async function deletePart(pid){
+  if(!Roles.isAdmin()){ denyAccess(); return; }
   const p=PC[pid];
   const eb=p?.editedBy?.username?` (last edited by @${p.editedBy.username})`:'';
   if(!confirm(`Delete "${p?.name||pid}"?${eb}\n\nThis cannot be undone.`))return;
@@ -818,7 +1153,7 @@ function cardHTML(part,curModel){
     <span>Added by <strong style="color:var(--text)">@${esc(part.addedBy.username)}</strong> · ${timeAgo(part.addedBy.at)}</span>
     ${part.editedBy?.username?`<span>· Edited by <strong style="color:var(--text)">@${esc(part.editedBy.username)}</strong> · ${timeAgo(part.editedBy.at)}</span>`:''}
   </div>`:'';
-  const eb=cu?`<div class="edit-card-btn" onclick="editPart('${part.id}')" title="Edit">✎</div>`:'';
+  const eb=Roles.isAdmin()?`<div class="edit-card-btn" onclick="editPart('${part.id}')" title="Edit">✎</div>`:'';
   return`<div class="part-card">
     <div class="part-card-header">
       <div class="part-card-main">
@@ -867,8 +1202,8 @@ function renderTable(){
       <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${p.addedBy?.username?'@'+esc(p.addedBy.username):'—'}</td>
       <td style="font-family:var(--mono);font-size:10px;color:var(--muted)">${p.editedBy?.username?'@'+esc(p.editedBy.username)+'<br><span style="font-size:9px">'+timeAgo(p.editedBy.at)+'</span>':'—'}</td>
       <td style="white-space:nowrap">
-        <button class="btn btn-sm btn-secondary" onclick="editPart('${id}')">Edit</button>
-        <button class="btn btn-sm btn-danger" onclick="deletePart('${id}')" style="margin-left:4px">Del</button>
+        ${Roles.isAdmin()?`<button class="btn btn-sm btn-secondary" onclick="editPart('${id}')">Edit</button>
+        <button class="btn btn-sm btn-danger" onclick="deletePart('${id}')" style="margin-left:4px">Del</button>`:'<span style="font-family:var(--mono);font-size:10px;color:var(--muted)">read-only</span>'}
       </td>
     </tr>`;
   }).join('');
@@ -923,9 +1258,10 @@ async function renderProfile(){
   document.getElementById('pr-av').textContent=ini;
   document.getElementById('hdr-av').textContent=ini;
   document.getElementById('pr-name').textContent='@'+cu.username;
+  const rb=document.getElementById('pr-role-badge');if(rb)rb.outerHTML=Roles.badge(cu.role||'user');
   document.getElementById('pr-email').textContent=cu.email;
   document.getElementById('pr-joined').textContent='Joined '+new Date(cu.createdAt||Date.now()).toLocaleDateString();
-  const prof=await FB.get(`users/${cu.uid}`).catch(()=>null);
+  const prof=await FB.getAuth(`users/${cu.uid}`).catch(()=>null);
   document.getElementById('pr-seen').textContent=prof?.lastSeen?'Last seen '+timeAgo(prof.lastSeen):'';
   const searches=cu.searches||[];
   document.getElementById('ps-searches').textContent=searches.length;
@@ -1032,6 +1368,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
    NAVIGATION
    ============================================================ */
 function showPage(n){
+  if(n==='admin'&&!Roles.isAdmin()){ denyAccess(); return; }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
   document.getElementById(`page-${n}`).classList.add('active');
@@ -1044,8 +1381,11 @@ function switchAdminTab(t){
   document.querySelectorAll('.admin-subtab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.admin-subpage').forEach(x=>x.classList.remove('active'));
   document.getElementById(`admin-${t}`).classList.add('active');
-  document.querySelectorAll('.admin-subtab')[['parts','activity'].indexOf(t)]?.classList.add('active');
+  const tabEls=document.querySelectorAll('.admin-subtab');
+  const tabIdx=['parts','activity','admins'].indexOf(t);
+  if(tabIdx>=0)tabEls[tabIdx]?.classList.add('active');
   if(t==='activity')loadActivityLog();
+  if(t==='admins')loadAdminList();
 }
 function switchPTab(t){
   document.querySelectorAll('.p-subtab').forEach(x=>x.classList.remove('active'));
@@ -1097,13 +1437,36 @@ function launch(user){
   document.getElementById('app').style.display='block';
   const ini=(user.username||'?')[0].toUpperCase();
   document.getElementById('hdr-av').textContent=ini;
+  // Show admin nav tab only for admins
+  const navAdminBtn=document.getElementById('nav-admin-btn');
+  if(navAdminBtn){
+    if(Roles.isAdmin()) navAdminBtn.classList.add('visible');
+    else navAdminBtn.classList.remove('visible');
+  }
+  // Show Admins subtab only for superadmins
+  const adminsTab=document.getElementById('admins-tab');
+  if(adminsTab){
+    adminsTab.style.display=Roles.isSuperAdmin()?'block':'none';
+  }
   loadAll().then(()=>{renderTable();renderRecentSearches()});
   UT.bump();
+  // Check if no admins configured yet
+  setTimeout(checkBootstrap, 1500);
 }
 
-window.addEventListener('DOMContentLoaded',()=>{
-  const saved=Auth.load();
-  if(saved?.uid)launch(saved);
+window.addEventListener('DOMContentLoaded', async () => {
+  const saved = Auth.load();
+  if (!saved?.uid) return;
+
+  // Always refresh the idToken on restore — tokens expire after 1 hour
+  const refreshed = await Auth.refreshIdToken();
+  if (refreshed) {
+    launch(Auth.load());  // load() now has the fresh token
+  } else {
+    // Token refresh failed (no network, revoked, etc.) — launch anyway
+    // Public reads will still work; writes will re-auth if needed
+    launch(saved);
+  }
 });
 
 /* ============================================================
@@ -1245,6 +1608,7 @@ function hideBanner() {
 // ── Offline / Online Detection ──
 function updateOnlineStatus() {
   const bar = document.getElementById('offline-bar');
+  if (!bar) return;  // Not rendered yet
   if (!navigator.onLine) {
     bar.classList.add('show');
   } else {
@@ -1264,6 +1628,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
 </script>
 
+<div id="access-denied">🔒 Admin access required to perform this action</div>
 <!-- OFFLINE BAR -->
 <div id="offline-bar">⚡ You are offline — recent searches still work</div>
 
