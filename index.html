@@ -1173,7 +1173,17 @@ function cardHTML(part,curModel){
   </div>`;
 }
 
-function showEmpty(){document.getElementById('results-wrap').innerHTML=`<div class="empty-state"><span class="empty-icon">🔍</span><h3>Search a phone model</h3><p>Type a model name above to find compatible parts.</p></div>`}
+function recentParts(n=6){
+  return Object.entries(PC).map(([id,p])=>({id,...p}))
+    .sort((a,b)=>(b.addedBy?.at||b.updatedAt||0)-(a.addedBy?.at||a.updatedAt||0))
+    .slice(0,n);
+}
+function showEmpty(){
+  const w=document.getElementById('results-wrap');
+  const rp=recentParts(6);
+  if(!rp.length){w.innerHTML=`<div class="empty-state"><span class="empty-icon">🔍</span><h3>Search a phone model</h3><p>Type a model name above to find compatible parts.</p></div>`;return}
+  w.innerHTML=`<div class="results-header"><div class="results-title">Recently added parts</div><div class="results-meta">${rp.length} part${rp.length>1?'s':''}</div></div>${rp.map(p=>cardHTML(p,'')).join('')}`;
+}
 function showLoad(s){if(s)document.getElementById('results-wrap').innerHTML=`<div class="loading-dots"><span></span><span></span><span></span></div>`}
 
 function renderRecentSearches(){
@@ -1448,7 +1458,7 @@ function launch(user){
   if(adminsTab){
     adminsTab.style.display=Roles.isSuperAdmin()?'block':'none';
   }
-  loadAll().then(()=>{renderTable();renderRecentSearches()});
+  loadAll().then(()=>{renderTable();renderRecentSearches();showEmpty()});
   UT.bump();
   // Check if no admins configured yet
   setTimeout(checkBootstrap, 1500);
