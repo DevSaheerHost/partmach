@@ -548,6 +548,14 @@ header{padding:16px 16px 0;max-width:720px;margin:0 auto;display:flex;align-item
             <span id="cache-info" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
           </div>
         </div>
+
+        <div class="admin-section">
+          <div class="section-header"><span class="section-title">Maintenance</span></div>
+          <div class="form-card" style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-danger btn-sm" onclick="cleanOrphanModels()">Clean Orphan Models</button>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">Removes model entries with 0 linked parts</span>
+          </div>
+        </div>
       </div><!-- /admin-parts -->
 
       <div id="admin-activity" class="admin-subpage">
@@ -1420,6 +1428,29 @@ function toast(m,t='info'){const el=document.getElementById('toast');el.textCont
 function cacheStats(){const s=C.stats();document.getElementById('cache-info').textContent=`${s.count} keys · ${s.sizeKB} KB`}
 function clearCache(){C.dp('');loaded=false;toast('Cache cleared','info');loadAll(true)}
 function exportData(){const blob=new Blob([JSON.stringify({parts:PC,models:SI},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);Object.assign(document.createElement('a'),{href:url,download:'partmatch.json'}).click();URL.revokeObjectURL(url)}
+
+async function cleanOrphanModels(){
+  if(!Roles.isAdmin()){ denyAccess(); return; }
+  lock(true);UB.show('Checking for orphan models…');
+  const ok=await loadAll(true);
+  if(!ok){UB.hide();lock(false);return}
+  const orphans=Object.entries(SI).filter(([,d])=>!Object.keys(d.parts||{}).length);
+  UB.hide();lock(false);
+  if(!orphans.length){toast('No orphan models found','info');return}
+  const names=orphans.map(([,d])=>d.name||'?');
+  if(!confirm(`Found ${orphans.length} orphan model${orphans.length>1?'s':''} with no linked parts:\n\n${names.slice(0,20).join(', ')}${names.length>20?'…':''}\n\nDelete them? This cannot be undone.`))return;
+  lock(true);UB.show(`Deleting 1 / ${orphans.length}…`);
+  let done=0;
+  for(const[k,d]of orphans){
+    done++;UB.update(`Deleting ${done} / ${orphans.length} — ${d.name||k}`);
+    try{ await FB.del(`models/${k}`); await Audit.log('delete',k,`[orphan model] ${d.name||k}`); }
+    catch(e){ console.error(e); }
+  }
+  C.dp('model_');C.del('full_ds');loaded=false;
+  UB.hide();lock(false);
+  toast(`Removed ${orphans.length} orphan model${orphans.length>1?'s':''} ✓`,'success');
+  await loadAll(true);renderTable();showEmpty();
+}
 document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))closeAC()});
 
 /* ============================================================
