@@ -548,6 +548,14 @@ header{padding:16px 16px 0;max-width:720px;margin:0 auto;display:flex;align-item
             <span id="cache-info" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
           </div>
         </div>
+
+        <div class="admin-section">
+          <div class="section-header"><span class="section-title">Maintenance</span></div>
+          <div class="form-card" style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-danger btn-sm" onclick="cleanOrphanModels()">Clean Orphan Models</button>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--muted)">Removes model entries with 0 linked parts</span>
+          </div>
+        </div>
       </div><!-- /admin-parts -->
 
       <div id="admin-activity" class="admin-subpage">
@@ -1011,7 +1019,19 @@ const Audit={
    ============================================================ */
 function mk(n){return n.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function timeAgo(ts){if(!ts)return'—';const d=Date.now()-ts;if(d<60000)return'just now';if(d<3600000)return Math.floor(d/60000)+'m ago';if(d<86400000)return Math.floor(d/3600000)+'h ago';return Math.floor(d/86400000)+'d ago'}
+function timeAgo(ts){
+  if(!ts)return'—';
+  const d=Date.now()-ts;
+  const MIN=60000,HR=3600000,DAY=86400000,MONTH=30*DAY,YEAR=365*DAY;
+  if(d<MIN)return'just now';
+  if(d<HR)return Math.floor(d/MIN)+'m ago';
+  if(d<DAY)return Math.floor(d/HR)+'h ago';
+  if(d<MONTH)return Math.floor(d/DAY)+'d ago';
+  if(d<YEAR){const m=Math.floor(d/MONTH);return m+(m===1?' month ago':' months ago')}
+  const y=(d/YEAR).toFixed(1).replace(/\.0$/,'');
+  return y+(y==='1'?' year ago':' years ago');
+}
+function fmtDateTime(ts){return new Date(ts).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
 
 /* ============================================================
    CRUD
@@ -1254,7 +1274,7 @@ async function loadActivityLog(){
     w.innerHTML=es.slice(0,50).map(e=>{
       const ic={create:'➕',update:'✏️',delete:'🗑️'}[e.action]||'●';
       const cl={create:'a-create',update:'a-update',delete:'a-delete'}[e.action]||'a-update';
-      return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title"><strong>@${esc(e.username||'unknown')}</strong> ${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${new Date(e.at).toLocaleString()}</div></div></div>`;
+      return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title"><strong>@${esc(e.username||'unknown')}</strong> ${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${fmtDateTime(e.at)}</div></div></div>`;
     }).join('');
   }catch(e){w.innerHTML=`<div style="text-align:center;color:var(--danger);padding:24px;font-family:var(--mono);font-size:12px">Error: ${esc(e.message)}</div>`}
 }
@@ -1296,7 +1316,7 @@ function renderMyAct(es){
   w.innerHTML=es.slice(0,30).map(e=>{
     const ic={create:'➕',update:'✏️',delete:'🗑️'}[e.action]||'●';
     const cl={create:'a-create',update:'a-update',delete:'a-delete'}[e.action]||'a-update';
-    return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title">${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${new Date(e.at).toLocaleString()}</div></div></div>`;
+    return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title">${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${fmtDateTime(e.at)}</div></div></div>`;
   }).join('');
 }
 
@@ -1420,6 +1440,29 @@ function toast(m,t='info'){const el=document.getElementById('toast');el.textCont
 function cacheStats(){const s=C.stats();document.getElementById('cache-info').textContent=`${s.count} keys · ${s.sizeKB} KB`}
 function clearCache(){C.dp('');loaded=false;toast('Cache cleared','info');loadAll(true)}
 function exportData(){const blob=new Blob([JSON.stringify({parts:PC,models:SI},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);Object.assign(document.createElement('a'),{href:url,download:'partmatch.json'}).click();URL.revokeObjectURL(url)}
+
+async function cleanOrphanModels(){
+  if(!Roles.isAdmin()){ denyAccess(); return; }
+  lock(true);UB.show('Checking for orphan models…');
+  const ok=await loadAll(true);
+  if(!ok){UB.hide();lock(false);return}
+  const orphans=Object.entries(SI).filter(([,d])=>!Object.keys(d.parts||{}).length);
+  UB.hide();lock(false);
+  if(!orphans.length){toast('No orphan models found','info');return}
+  const names=orphans.map(([,d])=>d.name||'?');
+  if(!confirm(`Found ${orphans.length} orphan model${orphans.length>1?'s':''} with no linked parts:\n\n${names.slice(0,20).join(', ')}${names.length>20?'…':''}\n\nDelete them? This cannot be undone.`))return;
+  lock(true);UB.show(`Deleting 1 / ${orphans.length}…`);
+  let done=0;
+  for(const[k,d]of orphans){
+    done++;UB.update(`Deleting ${done} / ${orphans.length} — ${d.name||k}`);
+    try{ await FB.del(`models/${k}`); await Audit.log('delete',k,`[orphan model] ${d.name||k}`); }
+    catch(e){ console.error(e); }
+  }
+  C.dp('model_');C.del('full_ds');loaded=false;
+  UB.hide();lock(false);
+  toast(`Removed ${orphans.length} orphan model${orphans.length>1?'s':''} ✓`,'success');
+  await loadAll(true);renderTable();showEmpty();
+}
 document.addEventListener('click',e=>{if(!e.target.closest('.search-wrap'))closeAC()});
 
 /* ============================================================
