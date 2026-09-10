@@ -2,6 +2,7 @@
   "name": "PartMatch \u2014 Mobile Repair Intelligence",
   "short_name": "PartMatch",
   "description": "Search compatible phone parts instantly. Find display, glass, battery parts for any mobile model.",
+  "id": "/",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -88,6 +89,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable any"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/search.png",
+      "sizes": "1080x1350",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Search for a phone model and see compatible parts instantly"
+    },
+    {
+      "src": "/screenshots/admin.png",
+      "sizes": "1080x1350",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Admin panel for managing the parts database"
     }
   ]
 }
