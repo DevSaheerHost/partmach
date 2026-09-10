@@ -1031,6 +1031,7 @@ function timeAgo(ts){
   const y=(d/YEAR).toFixed(1).replace(/\.0$/,'');
   return y+(y==='1'?' year ago':' years ago');
 }
+function fmtDateTime(ts){return new Date(ts).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true})}
 
 /* ============================================================
    CRUD
@@ -1273,7 +1274,7 @@ async function loadActivityLog(){
     w.innerHTML=es.slice(0,50).map(e=>{
       const ic={create:'➕',update:'✏️',delete:'🗑️'}[e.action]||'●';
       const cl={create:'a-create',update:'a-update',delete:'a-delete'}[e.action]||'a-update';
-      return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title"><strong>@${esc(e.username||'unknown')}</strong> ${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${new Date(e.at).toLocaleString()}</div></div></div>`;
+      return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title"><strong>@${esc(e.username||'unknown')}</strong> ${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${fmtDateTime(e.at)}</div></div></div>`;
     }).join('');
   }catch(e){w.innerHTML=`<div style="text-align:center;color:var(--danger);padding:24px;font-family:var(--mono);font-size:12px">Error: ${esc(e.message)}</div>`}
 }
@@ -1315,7 +1316,7 @@ function renderMyAct(es){
   w.innerHTML=es.slice(0,30).map(e=>{
     const ic={create:'➕',update:'✏️',delete:'🗑️'}[e.action]||'●';
     const cl={create:'a-create',update:'a-update',delete:'a-delete'}[e.action]||'a-update';
-    return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title">${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${new Date(e.at).toLocaleString()}</div></div></div>`;
+    return`<div class="act-item"><div class="act-icon ${cl}">${ic}</div><div><div class="act-title">${e.action}d <strong>${esc(e.partName||e.partId||'')}</strong></div><div class="act-meta">${timeAgo(e.at)} · ${fmtDateTime(e.at)}</div></div></div>`;
   }).join('');
 }
 
