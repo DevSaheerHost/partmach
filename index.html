@@ -1019,7 +1019,18 @@ const Audit={
    ============================================================ */
 function mk(n){return n.trim().toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'')}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function timeAgo(ts){if(!ts)return'—';const d=Date.now()-ts;if(d<60000)return'just now';if(d<3600000)return Math.floor(d/60000)+'m ago';if(d<86400000)return Math.floor(d/3600000)+'h ago';return Math.floor(d/86400000)+'d ago'}
+function timeAgo(ts){
+  if(!ts)return'—';
+  const d=Date.now()-ts;
+  const MIN=60000,HR=3600000,DAY=86400000,MONTH=30*DAY,YEAR=365*DAY;
+  if(d<MIN)return'just now';
+  if(d<HR)return Math.floor(d/MIN)+'m ago';
+  if(d<DAY)return Math.floor(d/HR)+'h ago';
+  if(d<MONTH)return Math.floor(d/DAY)+'d ago';
+  if(d<YEAR){const m=Math.floor(d/MONTH);return m+(m===1?' month ago':' months ago')}
+  const y=(d/YEAR).toFixed(1).replace(/\.0$/,'');
+  return y+(y==='1'?' year ago':' years ago');
+}
 
 /* ============================================================
    CRUD
