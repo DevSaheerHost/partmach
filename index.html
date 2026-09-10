@@ -1105,7 +1105,7 @@ async function getPartsFor(name){
 function searchModels(q){
   if(!q)return[];const ql=q.toLowerCase().trim(),out=[];
   for(const[k,d]of Object.entries(SI)){
-    if(!d?.name)continue;const n=d.name.toLowerCase(),b=(d.brand||'').toLowerCase();
+    if(!d?.name||!Object.keys(d.parts||{}).length)continue;const n=d.name.toLowerCase(),b=(d.brand||'').toLowerCase();
     let s=0;if(n===ql)s=100;else if(n.startsWith(ql))s=80;else if(b.startsWith(ql))s=70;else if(n.includes(ql))s=50;else if(fuzzy(n,ql))s=20;
     if(s>0)out.push({key:k,name:d.name,brand:d.brand||'',score:s});
   }
